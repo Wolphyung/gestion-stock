@@ -89,10 +89,11 @@ app.get('/api/produits', authenticateToken, (req, res) => {
   });
 });
 
-// POST - Ajouter un produit
+// POST - Ajouter un produit (avec vérification d'existence)
 app.post('/api/produits', authenticateToken, (req, res) => {
   const { design, prix, quantite } = req.body;
 
+  // Validation des champs
   if (!design || prix === undefined || quantite === undefined) {
     return res.status(400).json({ message: 'Tous les champs sont requis' });
   }
@@ -101,19 +102,35 @@ app.post('/api/produits', authenticateToken, (req, res) => {
     return res.status(400).json({ message: 'Prix et quantité doivent être >= 0' });
   }
 
-  db.run(
-    'INSERT INTO produits (design, prix, quantite) VALUES (?, ?, ?)',
-    [design, prix, quantite],
-    function(err) {
-      if (err) {
-        return res.status(500).json({ message: 'Insertion échouée' });
-      }
-      res.json({ 
-        message: 'Insertion réussie', 
-        produit: { numProduit: this.lastID, design, prix, quantite }
+  // Vérifier si le produit existe déjà (par la désignation)
+  db.get('SELECT * FROM produits WHERE design = ?', [design], (err, existingProduct) => {
+    if (err) {
+      return res.status(500).json({ message: 'Erreur lors de la vérification' });
+    }
+
+    if (existingProduct) {
+      return res.status(409).json({
+        message: `Le produit "${design}" existe déjà !`,
+        exists: true,
+        produit: existingProduct
       });
     }
-  );
+
+    // Si le produit n'existe pas, l'insérer
+    db.run(
+      'INSERT INTO produits (design, prix, quantite) VALUES (?, ?, ?)',
+           [design, prix, quantite],
+           function(err) {
+             if (err) {
+               return res.status(500).json({ message: 'Insertion échouée' });
+             }
+             res.json({
+               message: 'Insertion réussie',
+               produit: { numProduit: this.lastID, design, prix, quantite }
+             });
+           }
+    );
+  });
 });
 
 // PUT - Modifier un produit
